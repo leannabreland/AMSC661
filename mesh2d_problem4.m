@@ -1,89 +1,99 @@
 function mesh2d_problem4
-% mesh2d_problem4 Triangulate three shapes using Darren Engwirda's MESH2D package.
-% Make sure the MESH2D package is added to your MATLAB path.
 
-    % Triangulate L-shape
-    figure;
-    [vert, tri] = triangulate_L_shape;
-    patch('Faces', tri, 'Vertices', vert, 'FaceColor', 'none', 'EdgeColor', 'k');
-    axis equal off;
-    title('L-shape Triangulation');
+    hdata.hmax = 0.04; 
 
-    % Triangulate Pentagon with a Pentagon Hole
-    figure;
-    [vert, tri] = triangulate_pentagon;
-    patch('Faces', tri, 'Vertices', vert, 'FaceColor', 'none', 'EdgeColor', 'k');
+    figure(1); clf;
+    [nodeL, edgeL] = shape_L_viaHole();
+    [vertL, triL]  = refine2(nodeL, edgeL, [], hdata);
+    triL = fallbackTri(vertL, triL);
+    patch('Faces',triL,'Vertices',vertL,'FaceColor','none','EdgeColor','k');
     axis equal off;
-    title('Pentagon with a Pentagon Hole Triangulation');
+    title('L-shape: top-right corner removed');
 
-    % Triangulate Semicircle Bowl with Two Holes
-    figure;
-    [vert, tri] = triangulate_semicircle;
-    patch('Faces', tri, 'Vertices', vert, 'FaceColor', 'none', 'EdgeColor', 'k');
+    figure(2); clf;
+    [nodeP, edgeP] = shape_pentagon_starLines();
+    [vertP, triP]  = refine2(nodeP, edgeP, [], hdata);
+    triP = fallbackTri(vertP, triP);
+    patch('Faces',triP,'Vertices',vertP,'FaceColor','none','EdgeColor','k');
     axis equal off;
-    title('Semicircle Bowl with Two Holes Triangulation');
+    title('Pentagon with star lines');
+
+    figure(3); clf;
+    [nodeS, edgeS] = shape_halfcircle_top_holes();
+    [vertS, triS]  = refine2(nodeS, edgeS, [], hdata);
+    triS = fallbackTri(vertS, triS);
+    patch('Faces',triS,'Vertices',vertS,'FaceColor','none','EdgeColor','k');
+    axis equal off;
+    title('Half-circle (flat at y=1) with two holes');
 end
 
-function [vert, tri] = triangulate_L_shape
-    % Define an L-shape as the unit square with the top-right quarter removed.
-    node = [0, 0;
-            1, 0;
-            1, 0.5;
-            0.5, 0.5;
-            0.5, 1;
-            0, 1;
-            0, 0];  % Closing the loop
-    edge = [1 2; 2 3; 3 4; 4 5; 5 6; 6 7];
-    [vert, tri] = refine2(node, edge);
+function tri = fallbackTri(vert, tri)
+    if isempty(tri) || size(tri,2) ~= 3
+        dt = delaunayTriangulation(vert);
+        tri = dt.ConnectivityList;
+    end
 end
 
-function [vert, tri] = triangulate_pentagon
-    % Define an outer regular pentagon and a smaller, concentric inner pentagon.
-    center = [0.5, 0.5];
-    theta = linspace(0, 2*pi, 6); theta(end) = [];
-    R_outer = 0.4;
-    R_inner = 0.2;
-    outer = [center(1) + R_outer*cos(theta)', center(2) + R_outer*sin(theta)'];
-    inner = [center(1) + R_inner*cos(theta)', center(2) + R_inner*sin(theta)'];
-    
-    % Concatenate nodes: first outer boundary, then inner boundary.
-    node = [outer; inner];
-    nOuter = size(outer,1);
-    nInner = size(inner,1);
-    edgeOuter = [(1:nOuter)', [2:nOuter, 1]'];
-    edgeInner = [((nOuter+1):(nOuter+nInner))', [((nOuter+2):(nOuter+nInner)), nOuter+1]'];
-    edge = [edgeOuter; edgeInner];
-    [vert, tri] = refine2(node, edge);
+function [node, edge] = shape_L_viaHole()
+    outer = [0,0; 1,0; 1,1; 0,1];
+    nOut = size(outer,1);
+    edgeOut = [(1:nOut-1)', (2:nOut)'; nOut,1]; 
+
+    hole = [1,1; 0.5,1; 0.5,0.5; 1,0.5];
+    hole = flipud(hole); 
+    nHole = size(hole,1);
+    off = nOut;
+    edgeHole = [(off+1:off+nHole-1)', (off+2:off+nHole)'; off+nHole, off+1];
+
+    node = [outer; hole];
+    edge = [edgeOut; edgeHole];
 end
 
-function [vert, tri] = triangulate_semicircle
-    % Define a semicircle (approximated by an arc and a straight diameter)
-    % and two circular holes approximated by polygons.
-    nArc = 50;
-    theta_arc = linspace(0, pi, nArc)';
-    R = 0.5;
-    center_arc = [0.5, 0];
-    arc = [center_arc(1) + R*cos(theta_arc), center_arc(2) + R*sin(theta_arc)];
-    diameter = [1, 0; 0, 0];
-    outerBoundary = [arc; diameter];
-    
-    % Hole 1: centered at (0.3, 0.25) with radius 0.1
-    nHole = 30;
-    theta_hole = linspace(0, 2*pi, nHole+1)'; 
-    theta_hole(end) = [];
-    hole1 = [0.3 + 0.1*cos(theta_hole), 0.25 + 0.1*sin(theta_hole)];
-    
-    % Hole 2: centered at (0.7, 0.25) with radius 0.1
-    hole2 = [0.7 + 0.1*cos(theta_hole), 0.25 + 0.1*sin(theta_hole)];
-    
-    % Combine boundaries: outer boundary first, then holes.
-    node = [outerBoundary; hole1; hole2];
-    nOuter = size(outerBoundary,1);
-    nHole1 = size(hole1,1);
-    nHole2 = size(hole2,1);
-    edgeOuter = [(1:nOuter)', [2:nOuter, 1]'];
-    edgeHole1 = [(nOuter+1:nOuter+nHole1)', [nOuter+2:nOuter+nHole1, nOuter+1]'];
-    edgeHole2 = [(nOuter+nHole1+1:nOuter+nHole1+nHole2)', [nOuter+nHole1+2:nOuter+nHole1+nHole2, nOuter+nHole1+1]'];
-    edge = [edgeOuter; edgeHole1; edgeHole2];
-    [vert, tri] = refine2(node, edge);
+function [node, edge] = shape_pentagon_starLines()
+    c = [0.5,0.5];
+    N = 5;
+    angles = linspace(0,2*pi,N+1)'; 
+    angles(end) = [];
+    r = 0.4;
+    poly = [c(1)+r*cos(angles), c(2)+r*sin(angles)];
+    nP = size(poly,1);
+
+    edgeOut = [(1:nP-1)', (2:nP)'; nP,1];
+
+    starEdges = [1,3; 3,5; 5,2; 2,4; 4,1];
+
+    node = poly;
+    edge = [edgeOut; starEdges];
+end
+
+function [node, edge] = shape_halfcircle_top_holes()
+    nArc = 16;
+    center = [0.5,1];
+    r = 0.5;
+    theta = linspace(0,pi,nArc+1)';
+    theta(end) = []; 
+    arc = [center(1)+r*cos(theta), center(2)-r*sin(theta)];
+
+    nodeOut = [0,1; 1,1; arc];
+    nOut = size(nodeOut,1);
+    edgeOut = [(1:nOut-1)', (2:nOut)'; nOut,1];
+
+    cHole1 = [0.3,0.75];
+    cHole2 = [0.7,0.75];
+    rHole = 0.12;
+    nSeg = 12;
+    aHole = linspace(0,2*pi,nSeg+1)';
+    aHole(end) = [];
+    aHole = flipud(aHole);
+    hole1 = [cHole1(1)+rHole*cos(aHole), cHole1(2)+rHole*sin(aHole)];
+    hole2 = [cHole2(1)+rHole*cos(aHole), cHole2(2)+rHole*sin(aHole)];
+    nH1 = size(hole1,1);
+    nH2 = size(hole2,1);
+    off1 = nOut;
+    edgeH1 = [(off1+1:off1+nH1-1)', (off1+2:off1+nH1)'; off1+nH1, off1+1];
+    off2 = nOut + nH1;
+    edgeH2 = [(off2+1:off2+nH2-1)', (off2+2:off2+nH2)'; off2+nH2, off2+1];
+
+    node = [nodeOut; hole1; hole2];
+    edge = [edgeOut; edgeH1; edgeH2];
 end
